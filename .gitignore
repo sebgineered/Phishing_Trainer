@@ -1,0 +1,5 @@
+# Environment variables
+phishing-trainer/.env
+
+# Data files
+data/

@@ -4,6 +4,14 @@ import os
 import uuid
 from datetime import datetime
 from pathlib import Path
+from dotenv import load_dotenv
+import asyncio
+
+from jentic import Jentic, ExecutionRequest
+from jentic.lib.cfg import AgentConfig
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Initialize session state
 def init_session_state():
@@ -42,40 +50,71 @@ def save_campaigns():
 def navigate_to(page):
     st.session_state.page = page
 
-# Mock Jentic Standard Agent client for email generation
+# Jentic Standard Agent client for email generation
 class JenticStandardAgent:
     def __init__(self, api_key=None):
         self.api_key = api_key or os.getenv("JENTIC_AGENT_API_KEY")
-        self.connected = self.api_key is not None and len(self.api_key) > 0
-    
-    def generate_phishing_email(self, company_name, scenario_type, target_email=None):
-        """Generate a phishing email using Jentic's Standard Agent.
-        
-        In a real implementation, this would call the Jentic API.
-        For demo purposes, we'll return a template-based email.
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:  # 'RuntimeError: There is no current event loop...'
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        self.client = Jentic(AgentConfig(agent_api_key=self.api_key)) if self.api_key else None
+        self.connected = self.client is not None
+
+    async def send_phishing_email(self, company_name, scenario_type, target_email):
+        """Sends a phishing email using Jentic's Standard Agent with Mailchimp integration.
         
         Args:
             company_name: The company name to use in the email
             scenario_type: The type of phishing scenario
-            target_email: Optional target email for personalization
+            target_email: The target email for personalization
             
         Returns:
-            dict: Email content with subject and body_html
+            bool: True if the email was sent successfully, False otherwise
         """
         if not self.connected:
-            # Fall back to templates if not connected
-            return generate_simple_email_from_template(company_name, scenario_type)
+            st.error("Jentic client not connected. Please check your API key.")
+            return False
         
-        # In a real implementation, this would call the Jentic API
-        # For demo purposes, we'll return a slightly enhanced template
-        template = generate_simple_email_from_template(company_name, scenario_type)
-        
-        # Add a note indicating this was generated with Jentic
-        template["body_html"] = template["body_html"] + f"""
-        <p><small>Enhanced with Jentic Standard Agent</small></p>
-        """
-        
-        return template
+        try:
+            # Search for the mailchimp operation
+            search_result = await self.client.search("send email with mailchimp")
+            
+            if not search_result.operations:
+                st.error("Could not find the send email operation in Jentic.")
+                return False
+
+            print("Operation Input Schema:", search_result.operations[0].model_dump_json(indent=2))
+
+            operation_id = search_result.operations[0].id
+            
+            email_content = generate_simple_email_from_template(company_name, scenario_type)
+
+            request = ExecutionRequest(
+                id=operation_id, 
+                inputs={
+                    "subject": email_content["subject"],
+                    "body": email_content["body_html"],
+                    "recipients": [{"email": target_email}],
+                }
+            )
+            
+            result = await self.client.execute(request)
+            
+            if result.is_success:
+                return True
+            else:
+                st.error(f"Failed to send email to {target_email} via Jentic: {result.error}")
+                return False
+
+        except Exception as e:
+            print(f"An error occurred with the Jentic client: {e}")
+            import traceback
+            traceback.print_exc()
+            st.error(f"An error occurred with the Jentic client: {e}")
+            return False
+
 
 # Generate a simple phishing email from template
 def generate_simple_email_from_template(company_name, scenario_type):
@@ -85,7 +124,7 @@ def generate_simple_email_from_template(company_name, scenario_type):
             "body": f"""
             <p>Dear User,</p>
             <p>We have detected unusual activity on your {company_name} account. To ensure your account security, please verify your credentials by clicking the link below:</p>
-            <p><a href="{{tracking_url}}">Verify Account Now</a></p>
+            <p><a href=\"{{tracking_url}}\">Verify Account Now</a></p>
             <p>If you did not request this verification, please ignore this email.</p>
             <p>Thank you,<br>{company_name} Security Team</p>
             """
@@ -95,7 +134,7 @@ def generate_simple_email_from_template(company_name, scenario_type):
             "body": f"""
             <p>Dear User,</p>
             <p>We received a request to reset your password for your {company_name} account. Click the link below to set a new password:</p>
-            <p><a href="{{tracking_url}}">Reset Password</a></p>
+            <p><a href=\"{{tracking_url}}\">Reset Password</a></p>
             <p>If you did not request a password reset, please ignore this email.</p>
             <p>Regards,<br>{company_name} Support</p>
             """
@@ -105,7 +144,7 @@ def generate_simple_email_from_template(company_name, scenario_type):
             "body": f"""
             <p>Hello,</p>
             <p>An important document has been shared with you from {company_name}. Please review it as soon as possible by clicking the link below:</p>
-            <p><a href="{{tracking_url}}">View Document</a></p>
+            <p><a href=\"{{tracking_url}}\">View Document</a></p>
             <p>This link will expire in 24 hours.</p>
             <p>Best regards,<br>{company_name} Team</p>
             """
@@ -120,16 +159,6 @@ def generate_simple_email_from_template(company_name, scenario_type):
         "body_html": template["body"]
     }
 
-# Generate a phishing email (with Jentic integration if available)
-def generate_simple_email(company_name, scenario_type):
-    # Try to use Jentic Standard Agent if configured
-    jentic_agent = JenticStandardAgent()
-    if jentic_agent.connected:
-        return jentic_agent.generate_phishing_email(company_name, scenario_type)
-    else:
-        # Fall back to template-based generation
-        return generate_simple_email_from_template(company_name, scenario_type)
-
 # Generate a tracking URL (simplified)
 def generate_tracking_url(campaign_id, recipient_id):
     base_url = "http://localhost:8501/track"
@@ -141,11 +170,7 @@ def parse_targets(target_emails):
         return []
         
     email_list = [email.strip() for email in target_emails.split('\n') if email.strip()]
-    return [{
-        'email': email, 
-        'id': str(uuid.uuid4()), 
-        'status': 'queued'
-    } for email in email_list]
+    return [{'email': email, 'id': str(uuid.uuid4()), 'status': 'queued'} for email in email_list]
 
 # Main app
 def main():
@@ -207,7 +232,7 @@ def show_dashboard():
     st.subheader("Recent Campaigns")
     
     for campaign_id, campaign in list(st.session_state.campaigns.items())[-5:]:
-        with st.expander(f"{campaign['name']} ({campaign['created_at']})"): 
+        with st.expander(f"{campaign['name']} ({campaign['created_at']})"):
             st.write(f"**Status:** {campaign['status']}")
             st.write(f"**Targets:** {len(campaign['recipients'])}")
             
@@ -269,8 +294,8 @@ def show_create_campaign():
                 'recipients': targets
             }
             
-            # Generate email content
-            email_content = generate_simple_email(company_name, scenario_type)
+            # Generate email content but don't send
+            email_content = generate_simple_email_from_template(company_name, scenario_type)
             campaign['email_content'] = email_content
             
             # Generate tracking URLs
@@ -319,18 +344,33 @@ def show_email_preview():
             save_campaigns()
             st.success("Email content updated!")
     
-    # Simulate sending
-    if st.button("Simulate Campaign Send"):
+    # Send campaign button
+    if st.button("Send Campaign"):
+        jentic_agent = JenticStandardAgent()
+        if not jentic_agent.connected:
+            st.error("Jentic client not connected. Please check your API key in Settings.")
+            return
+
+        # Send emails to all recipients
+        with st.spinner("Sending emails..."):
+            success_count = 0
+            for recipient in campaign['recipients']:
+                sent = asyncio.run(jentic_agent.send_phishing_email(
+                    campaign['company']['name'],
+                    campaign['scenario']['type'],
+                    recipient['email']
+                ))
+                if sent:
+                    success_count += 1
+                    recipient['status'] = 'sent'
+                    recipient['send_ts'] = datetime.now().timestamp()
+
         # Update campaign status
         campaign['status'] = 'active'
-        for recipient in campaign['recipients']:
-            recipient['status'] = 'sent'
-            recipient['send_ts'] = datetime.now().timestamp()
-        
         st.session_state.campaigns[st.session_state.current_campaign] = campaign
         save_campaigns()
         
-        st.success("Campaign simulated successfully! In a real scenario, emails would be sent to recipients.")
+        st.success(f"Campaign sent! {success_count}/{len(campaign['recipients'])} emails sent successfully.")
         st.button("View Reports", on_click=navigate_to, args=("reports",))
 
 # Reports page
@@ -461,11 +501,11 @@ def show_settings():
     
     # Email service settings
     st.subheader("Email Service")
-    sendgrid_api_key = st.text_input(
-        "SendGrid API Key", 
-        value=os.getenv("SENDGRID_API_KEY", ""),
+    mailchimp_api_key = st.text_input(
+        "Mailchimp API Key", 
+        value=os.getenv("MAILCHIMP_API_KEY", ""),
         type="password",
-        help="API key for SendGrid email service"
+        help="API key for Mailchimp email service (used by Jentic)"
     )
     
     sender_email = st.text_input(
@@ -476,10 +516,34 @@ def show_settings():
     
     # Save settings button
     if st.button("Save Settings"):
-        # In a real app, we would save these to .env or a secure storage
-        # For this demo, we'll just show a success message
-        st.success("Settings saved successfully!")
-        st.info("Note: In a production app, these settings would be saved to a secure storage.")
+        # Save settings to .env file
+        env_path = Path(".env")
+        
+        # Read existing .env content
+        if env_path.exists():
+            with open(env_path, 'r') as f:
+                env_lines = f.readlines()
+        else:
+            env_lines = []
+        
+        # Update environment variables
+        env_vars = {
+            "JENTIC_AGENT_API_KEY": jentic_api_key,
+            "MAILCHIMP_API_KEY": mailchimp_api_key,
+            "EMAIL_SENDER": sender_email
+        }
+        
+        # Update .env file content
+        with open(env_path, 'w') as f:
+            for key, value in env_vars.items():
+                f.write(f'{key}="{value}"\n')
+        
+        # Update environment variables in current session
+        for var_name, var_value in env_vars.items():
+            os.environ[var_name] = var_value
+        
+        st.success("Settings saved successfully to .env file!")
+        st.info("Note: API keys are stored in the .env file in your project directory.")
 
 # Main entry point
 if __name__ == "__main__":
