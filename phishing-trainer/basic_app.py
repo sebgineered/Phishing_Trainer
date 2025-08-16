@@ -7,7 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import asyncio
 
-from jentic import Jentic, ExecutionRequest
+from jentic import Jentic, ExecutionRequest, SearchRequest
 from jentic.lib.cfg import AgentConfig
 
 # Load environment variables from .env file
@@ -21,6 +21,8 @@ def init_session_state():
         st.session_state.current_campaign = None
     if 'page' not in st.session_state:
         st.session_state.page = 'dashboard'
+    if 'debug_mode' not in st.session_state:
+        st.session_state.debug_mode = False
 
 # Load campaigns from JSON file
 def load_campaigns():
@@ -79,15 +81,14 @@ class JenticStandardAgent:
         
         try:
             # Search for the mailchimp operation
-            search_result = await self.client.search("send email with mailchimp")
+            search_request = SearchRequest(query="send email with mailchimp")
+            search_result = await self.client.search(search_request)
             
-            if not search_result.operations:
+            if not search_result.results:
                 st.error("Could not find the send email operation in Jentic.")
                 return False
 
-            print("Operation Input Schema:", search_result.operations[0].model_dump_json(indent=2))
-
-            operation_id = search_result.operations[0].id
+            operation_id = search_result.results[0].id
             
             email_content = generate_simple_email_from_template(company_name, scenario_type)
 
@@ -97,22 +98,30 @@ class JenticStandardAgent:
                     "subject": email_content["subject"],
                     "body": email_content["body_html"],
                     "recipients": [{"email": target_email}],
+                    "server": "us19"
                 }
             )
+
+            if st.session_state.debug_mode:
+                st.session_state.debug_info = {
+                    "operation_id": operation_id,
+                    "inputs": request.inputs
+                }
             
             result = await self.client.execute(request)
             
-            if result.is_success:
+            if result.success:
                 return True
             else:
                 st.error(f"Failed to send email to {target_email} via Jentic: {result.error}")
+                if st.session_state.debug_mode:
+                    st.session_state.debug_info["error"] = result.error
                 return False
 
         except Exception as e:
-            print(f"An error occurred with the Jentic client: {e}")
-            import traceback
-            traceback.print_exc()
             st.error(f"An error occurred with the Jentic client: {e}")
+            if st.session_state.debug_mode:
+                st.session_state.debug_info["error"] = str(e)
             return False
 
 
@@ -513,6 +522,15 @@ def show_settings():
         value=os.getenv("EMAIL_SENDER", "phishing@example.com"),
         help="Email address used as the sender for phishing simulations"
     )
+
+    # Debug mode
+    st.subheader("Debugging")
+    debug_mode = st.checkbox("Enable Debug Mode", value=st.session_state.debug_mode)
+    st.session_state.debug_mode = debug_mode
+
+    if st.session_state.debug_mode and hasattr(st.session_state, 'debug_info'):
+        st.subheader("Last Jentic API Call")
+        st.json(st.session_state.debug_info)
     
     # Save settings button
     if st.button("Save Settings"):
