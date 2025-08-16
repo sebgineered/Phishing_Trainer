@@ -1,0 +1,21 @@
+# Core dependencies
+python-dotenv>=1.0.0
+streamlit>=1.30.0
+jentic>=0.1.0
+
+# Email integration
+sendgrid>=6.10.0
+python-email-validator>=2.0.0
+
+# LLM integration
+openai>=1.6.0
+
+# Data handling
+pandas>=2.0.0
+matplotlib>=3.7.0
+
+# Security
+cryptography>=41.0.0
+
+# Testing
+pytest>=7.4.0
