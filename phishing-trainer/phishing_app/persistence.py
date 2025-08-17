@@ -50,23 +50,7 @@ def save_campaigns(campaigns: Dict[str, Any]) -> None:
         logging.error(f"Error saving campaigns: {e}")
 
 
-def parse_targets(target_emails: str) -> List[Dict[str, str]]:
-    """
-    Parses a string of newline-separated email addresses into a list of
-    recipient dictionaries.
 
-    Args:
-        target_emails: A string containing one email address per line.
-
-    Returns:
-        A list of dictionaries, where each dictionary represents a recipient
-        with an email, a unique ID, and a 'queued' status.
-    """
-    if not target_emails:
-        return []
-        
-    email_list = [email.strip() for email in target_emails.split('\n') if email.strip()]
-    return [{'email': email, 'id': str(uuid.uuid4()), 'status': 'queued'} for email in email_list]
 
 
 def generate_tracking_url(campaign_id: str, recipient_id: str) -> str:

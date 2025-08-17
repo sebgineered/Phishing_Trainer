@@ -31,12 +31,11 @@ from phishing_app.integration import JenticStandardAgent
 from phishing_app.persistence import (
     generate_tracking_url,
     load_campaigns,
-    parse_targets,
     save_campaigns,
     track_click_and_save,
 )
 from phishing_app.templates import generate_email_template, TEMPLATES
-from phishing_app.utils import init_session_state, navigate_to
+from phishing_app.utils import init_session_state, navigate_to, parse_targets
 
 
 def configure_logging(debug_mode=False):
@@ -103,11 +102,18 @@ def show_create_campaign():
                 st.error("Campaign name and company name are required.")
                 return
             
-            targets = parse_targets(target_emails)
-            
-            if not targets:
-                st.error("At least one target email is required.")
+            raw_targets = target_emails.splitlines()
+            validated_emails = parse_targets(target_emails)
+            invalid_emails = [email for email in raw_targets if email.strip() and email.strip() not in validated_emails]
+
+            if invalid_emails:
+                st.warning(f"The following emails are invalid and will be skipped: {', '.join(invalid_emails)}")
+
+            if not validated_emails:
+                st.error("At least one valid target email is required.")
                 return
+
+            targets = [{'email': email, 'id': str(uuid.uuid4()), 'status': 'queued'} for email in validated_emails]
             
             campaign_id = str(uuid.uuid4())
             campaign = {

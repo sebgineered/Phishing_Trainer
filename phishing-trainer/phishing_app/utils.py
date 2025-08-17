@@ -8,21 +8,26 @@ state management.
 
 import re
 import streamlit as st
+from email_validator import validate_email, EmailNotValidError
 from .persistence import load_campaigns
 
-def is_valid_email(email: str) -> bool:
-    """
-    Validates an email address using a regular expression.
+def validate_and_normalize_email(addr: str) -> str | None:
+    """Return normalized email if valid, else None."""
+    try:
+        valid = validate_email(addr, check_deliverability=True)
+        # normalized email (lowercase domain, Unicode handling)
+        return valid.email
+    except EmailNotValidError:
+        return None
 
-    Args:
-        email: The email address to validate.
-
-    Returns:
-        True if the email address is valid, False otherwise.
-    """
-    # A simple regex for email validation
-    regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(regex, email) is not None
+def parse_targets(target_emails: str) -> list[str]:
+    """Split comma/line-separated emails, validate, normalize, and de duplicate."""
+    emails = set()
+    for raw in re.split(r'[,]+', target_emails):
+        email = validate_and_normalize_email(raw.strip())
+        if email:
+            emails.add(email)
+    return list(emails)
 
 def init_session_state():
     """Initializes the Streamlit session state with default values."""
