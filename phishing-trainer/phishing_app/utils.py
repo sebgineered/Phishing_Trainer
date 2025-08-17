@@ -20,14 +20,17 @@ def validate_and_normalize_email(addr: str) -> str | None:
     except EmailNotValidError:
         return None
 
-def parse_targets(target_emails: str) -> list[str]:
+def parse_targets(target_emails: str) -> tuple[list[str], list[str]]:
     """Split comma/line-separated emails, validate, normalize, and de duplicate."""
-    emails = set()
+    valid_emails = set()
+    invalid_emails = set()
     for raw in re.split(r'[,]+', target_emails):
         email = validate_and_normalize_email(raw.strip())
         if email:
-            emails.add(email)
-    return list(emails)
+            valid_emails.add(email)
+        else:
+            invalid_emails.add(raw.strip())
+    return list(valid_emails), list(invalid_emails)
 
 def init_session_state():
     """Initializes the Streamlit session state with default values."""

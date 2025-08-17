@@ -12,6 +12,20 @@ Available scenarios:
 """
 
 from typing import Dict
+import bleach
+
+
+# Allowed tags (only basic formatting and links)
+ALLOWED_TAGS = ['a', 'strong', 'em', 'p', 'ul', 'ol', 'li', 'br']
+
+def sanitize_html(html: str) -> str:
+    """Return a safe HTML string by stripping unwanted tags."""
+    return bleach.clean(
+        html,
+        tags=ALLOWED_TAGS,
+        attributes={'a': ['href', 'title', 'target']},
+        strip=True
+    )
 
 
 TEMPLATES = {
@@ -71,9 +85,11 @@ def generate_email_template(company_name: str, scenario: str) -> Dict[str, str]:
     # However, the company_name can be formatted.
     
     subject = template["subject"].format(company_name=company_name)
-    body = template["body"].format(company_name=company_name)
+    body_html = template["body"].format(company_name=company_name, tracking_url='{tracking_url}')
+    safe_body_html = sanitize_html(body_html)
 
     return {
         "subject": subject,
-        "body_html": body
+        "body_html": safe_body_html
     }
+

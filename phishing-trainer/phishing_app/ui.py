@@ -102,9 +102,7 @@ def show_create_campaign():
                 st.error("Campaign name and company name are required.")
                 return
             
-            raw_targets = target_emails.splitlines()
-            validated_emails = parse_targets(target_emails)
-            invalid_emails = [email for email in raw_targets if email.strip() and email.strip() not in validated_emails]
+            validated_emails, invalid_emails = parse_targets(target_emails)
 
             if invalid_emails:
                 st.warning(f"The following emails are invalid and will be skipped: {', '.join(invalid_emails)}")
