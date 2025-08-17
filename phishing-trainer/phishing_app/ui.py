@@ -174,7 +174,12 @@ def show_email_preview():
             st.success("Email content updated!")
     
     if st.button("Send Campaign"):
-        jentic_agent = JenticStandardAgent()
+        try:
+            jentic_agent = JenticStandardAgent()
+        except ValueError as e:
+            st.error(f"Configuration Error: {e}. Please check your API keys in Settings.")
+            return
+
         if not jentic_agent.connected:
             st.error("Jentic client not connected. Please check your API key in Settings.")
             return
@@ -326,9 +331,6 @@ def show_settings():
         value=get_mailchimp_list_id(),
         help="Required: Mailchimp Audience/List ID (found in Audience settings)"
     )
-    
-    if not mailchimp_list_id:
-        st.warning("⚠️ Mailchimp List ID is required for sending emails")
     
     mailchimp_api_url = st.text_input(
         "Mailchimp API URL",

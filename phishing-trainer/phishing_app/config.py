@@ -23,12 +23,18 @@ def get_jentic_api_key() -> str:
 
 def get_mailchimp_api_key() -> str:
     """Returns the Mailchimp API key from environment variables."""
-    return os.getenv("MAILCHIMP_API_KEY", "")
+    key = os.getenv("MAILCHIMP_API_KEY", "").strip()
+    if not key:
+        raise ValueError("MAILCHIMP_API_KEY is required.")
+    return key
 
 
 def get_mailchimp_list_id() -> str:
     """Returns the Mailchimp List ID from environment variables."""
-    return os.getenv("MAILCHIMP_LIST_ID", "")
+    list_id = os.getenv("MAILCHIMP_LIST_ID", "").strip()
+    if not list_id:
+        raise ValueError("MAILCHIMP_LIST_ID is required.")
+    return list_id
 
 
 def get_mailchimp_dc() -> str:
