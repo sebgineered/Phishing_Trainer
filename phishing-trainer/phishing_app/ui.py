@@ -8,6 +8,7 @@ for the application.
 """
 
 import asyncio
+import logging
 import uuid
 from datetime import datetime
 
@@ -36,6 +37,16 @@ from phishing_app.persistence import (
 )
 from phishing_app.templates import generate_email_template, TEMPLATES
 from phishing_app.utils import init_session_state, navigate_to
+
+
+def configure_logging(debug_mode=False):
+    """Configures the logging for the application."""
+    level = logging.DEBUG if debug_mode else logging.INFO
+    logging.basicConfig(
+        level=level,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
 
 
 def show_dashboard():
@@ -122,6 +133,7 @@ def show_create_campaign():
             st.session_state.campaigns[campaign_id] = campaign
             save_campaigns(st.session_state.campaigns)
             
+            logging.info(f"Campaign '{campaign_name}' created successfully.")
             st.success(f"Campaign '{campaign_name}' created successfully!")
             st.session_state.current_campaign = campaign_id
             st.session_state.page = "email_preview"
@@ -166,15 +178,23 @@ def show_email_preview():
         with st.spinner("Sending emails..."):
             success_count = 0
             for recipient in campaign['recipients']:
-                sent = asyncio.run(jentic_agent.send_phishing_email(
-                    campaign['company']['name'],
-                    campaign['scenario']['type'],
-                    recipient['email']
-                ))
-                if sent:
-                    success_count += 1
-                    recipient['status'] = 'sent'
-                    recipient['send_ts'] = datetime.now().timestamp()
+                try:
+                    sent, response = asyncio.run(jentic_agent.send_phishing_email(
+                        campaign['company']['name'],
+                        campaign['scenario']['type'],
+                        recipient['email']
+                    ))
+                    if sent:
+                        success_count += 1
+                        recipient['status'] = 'sent'
+                        recipient['send_ts'] = datetime.now().timestamp()
+                        logging.info(f"Email sent to {recipient['email']}")
+                    else:
+                        logging.error(f"Failed to send email to {recipient['email']}. Response: {response}")
+                        st.session_state.debug_info = {"status_code": response.status_code, "body": response.text}
+                except Exception as e:
+                    logging.error(f"An error occurred while sending email to {recipient['email']}: {e}")
+                    st.session_state.debug_info = {"error": str(e)}
 
         campaign['status'] = 'active'
         st.session_state.campaigns[st.session_state.current_campaign] = campaign
@@ -313,10 +333,13 @@ def show_settings():
     )
     
     st.subheader("Debugging")
-    debug_mode = st.checkbox("Enable Debug Mode", value=st.session_state.debug_mode)
-    st.session_state.debug_mode = debug_mode
+    debug_mode = st.checkbox("Enable Debug Mode", value=st.session_state.get("debug_mode", False))
+    if debug_mode != st.session_state.get("debug_mode"):
+        st.session_state.debug_mode = debug_mode
+        configure_logging(debug_mode)
+        st.rerun()
 
-    if st.session_state.debug_mode and hasattr(st.session_state, 'debug_info'):
+    if st.session_state.get("debug_mode") and st.session_state.get('debug_info'):
         st.subheader("Last Jentic API Call")
         st.json(st.session_state.debug_info)
     

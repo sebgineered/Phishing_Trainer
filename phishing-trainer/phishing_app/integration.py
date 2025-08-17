@@ -7,7 +7,8 @@ sending phishing emails via the Jentic platform, which in turn uses Mailchimp.
 
 import asyncio
 import json
-from typing import Any, Dict
+import logging
+from typing import Any, Dict, Tuple
 
 import streamlit as st
 from jentic import Jentic, ExecutionRequest
@@ -44,7 +45,7 @@ class JenticStandardAgent:
         self.client = Jentic(AgentConfig(agent_api_key=self.api_key)) if self.api_key else None
         self.connected = self.client is not None
 
-    async def send_phishing_email(self, company_name: str, scenario_type: str, target_email: str) -> Any:
+    async def send_phishing_email(self, company_name: str, scenario_type: str, target_email: str) -> Tuple[bool, Any]:
         """
         Sends a phishing email to a target using the Jentic platform.
 
@@ -54,11 +55,11 @@ class JenticStandardAgent:
             target_email: The email address of the target.
 
         Returns:
-            The result of the Jentic execution, or False if an error occurred.
+            A tuple containing a boolean indicating success and the result of the Jentic execution.
         """
         if not self.connected:
-            st.error("Jentic client not connected. Please check your API key.")
-            return False
+            logging.error("Jentic client not connected. Please check your API key.")
+            return False, {"error": "Jentic client not connected"}
         
         try:
             # Generate email content
@@ -113,11 +114,13 @@ class JenticStandardAgent:
             result = await self.client.execute(request)
             
             if not result.success:
-                raise Exception(f"Failed to send email: {result.error}")
+                logging.error(f"Failed to send email: {result.error}")
+                return False, result.error
             
-            return result
+            return True, result
 
         except Exception as e:
             error_msg = f"An error occurred with the Jentic client: {e}"
-            st.error(error_msg)
-            return False
+            logging.error(error_msg)
+            return False, {"error": str(e)}
+

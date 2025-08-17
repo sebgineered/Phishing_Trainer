@@ -5,14 +5,12 @@ This module is responsible for all data persistence operations, including
 reading and writing campaign data from/to a JSON file. It can be extended
 in the future to use a database instead of a file-based storage.
 """
-
 import json
+import logging
 import uuid
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
-
-import streamlit as st
+from datetime import datetime
+from typing import Dict, List, Any
 
 
 def load_campaigns() -> Dict[str, Any]:
@@ -31,7 +29,7 @@ def load_campaigns() -> Dict[str, Any]:
         with open(campaigns_file, 'r') as f:
             return json.load(f)
     except Exception as e:
-        st.error(f"Error loading campaigns: {e}")
+        logging.error(f"Error loading campaigns: {e}")
         return {}
 
 
@@ -49,7 +47,7 @@ def save_campaigns(campaigns: Dict[str, Any]) -> None:
         with open(campaigns_file, 'w') as f:
             json.dump(campaigns, f, indent=2)
     except Exception as e:
-        st.error(f"Error saving campaigns: {e}")
+        logging.error(f"Error saving campaigns: {e}")
 
 
 def parse_targets(target_emails: str) -> List[Dict[str, str]]:
